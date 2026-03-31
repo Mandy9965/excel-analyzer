@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Excel 看图说话器 · 智能数据分析</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+</head>
+<body>
+
+<!-- ===== 顶部导航 ===== -->
+<header class="header">
+  <div class="header-inner">
+    <div class="logo">
+      <span class="logo-icon">📊</span>
+      <span class="logo-text">Excel 看图说话器</span>
+    </div>
+    <button class="btn-icon" id="btnSettings" title="AI 接口配置">⚙️ AI 配置</button>
+  </div>
+</header>
+
+<!-- ===== AI 配置弹窗 ===== -->
+<div class="modal-mask" id="modalMask">
+  <div class="modal">
+    <div class="modal-head">
+      <span>⚙️ AI 接口配置</span>
+      <button class="modal-close" id="modalClose">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="modal-tip">
+        已为你预填公司 <strong>FRIDAY 大模型平台</strong>配置。<br/>
+        请前往 <a href="https://friday.sankuai.com/budget/serviceManage" target="_blank">FRIDAY 控制台</a> 申请 App ID，填入下方 API Key 即可使用。<br/>
+        <strong>Key 仅存储在本地浏览器，不会上传到任何服务器。</strong>
+      </p>
+      <div class="form-row">
+        <label>API Base URL</label>
+        <input id="inputBase" type="text" placeholder="https://aigc.sankuai.com/v1" />
+      </div>
+      <div class="form-row">
+        <label>API Key</label>
+        <input id="inputKey" type="password" placeholder="在 FRIDAY 控制台申请的 App ID" />
+      </div>
+      <div class="form-row">
+        <label>模型名称</label>
+        <input id="inputModel" type="text" placeholder="claude-3-7-sonnet-20250219" />
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="btnCancelConfig">取消</button>
+        <button class="btn btn-primary" id="btnSaveConfig">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 主体 ===== -->
+<main class="main">
+
+  <!-- 上传区 -->
+  <section id="uploadSection" class="upload-section">
+    <div class="upload-card" id="uploadZone">
+      <div class="upload-icon">📂</div>
+      <h2>上传 Excel 文件</h2>
+      <p class="upload-sub">支持 .xlsx · .xls · .csv，拖拽或点击选择</p>
+      <button class="btn btn-primary btn-lg">选择文件</button>
+      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" hidden />
+      <p class="upload-note">🔒 文件在本地浏览器内处理，不会上传到任何服务器</p>
+    </div>
+  </section>
+
+  <!-- 结果区 -->
+  <section id="resultSection" class="result-section hidden">
+
+    <!-- 文件信息条 -->
+    <div class="info-bar">
+      <div class="info-bar-left">
+        <span class="info-icon">📄</span>
+        <span class="info-name" id="fileName"></span>
+        <span class="info-meta" id="fileSize"></span>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="btnReset">↩ 重新上传</button>
+    </div>
+
+    <!-- Sheet 标签 -->
+    <div class="sheet-tabs" id="sheetTabs"></div>
+
+    <!-- 统计卡片：只保留行数、列数 -->
+    <div class="stat-cards">
+      <div class="stat-card blue">
+        <div class="stat-label">数据行数</div>
+        <div class="stat-value" id="statRows">—</div>
+        <div class="stat-sub">有效数据行</div>
+      </div>
+      <div class="stat-card green">
+        <div class="stat-label">数据列数</div>
+        <div class="stat-value" id="statCols">—</div>
+        <div class="stat-sub">字段数量</div>
+      </div>
+    </div>
+
+    <!-- 内容区：左=数据预览  右=数据可视化（等高平分） -->
+    <div class="content-layout">
+
+      <!-- 左：数据表格 -->
+      <div class="panel panel-table">
+        <div class="panel-header">
+          <span class="panel-title">📋 数据预览</span>
+          <span class="panel-badge" id="tableBadge"></span>
+        </div>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead id="tableHead"></thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 右：数据可视化（透视表 + 图表） -->
+      <div class="panel panel-chart">
+        <div class="panel-header">
+          <span class="panel-title">📈 数据可视化</span>
+          <div class="chart-btns">
+            <button class="chart-type-btn" data-type="pivot">透视</button>
+            <button class="chart-type-btn active" data-type="bar">柱状</button>
+            <button class="chart-type-btn" data-type="line">折线</button>
+            <button class="chart-type-btn" data-type="pie">饼图</button>
+          </div>
+        </div>
+
+        <!-- 透视表配置区（pivot 模式下显示） -->
+        <div class="pivot-area" id="pivotArea" style="display:none;">
+          <div class="pivot-fields-wrap">
+            <div class="pivot-field-pool">
+              <div class="pivot-zone-label">可用字段（拖拽到右侧）</div>
+              <div class="pivot-pool" id="pivotPool"></div>
+            </div>
+            <div class="pivot-zones">
+              <div class="pivot-zone">
+                <div class="pivot-zone-label">🔢 行字段</div>
+                <div class="pivot-drop" data-zone="row" id="dropRow"></div>
+              </div>
+              <div class="pivot-zone">
+                <div class="pivot-zone-label">📊 列字段（分组）</div>
+                <div class="pivot-drop" data-zone="col" id="dropCol"></div>
+              </div>
+              <div class="pivot-zone">
+                <div class="pivot-zone-label">∑ 值字段（求和）</div>
+                <div class="pivot-drop" data-zone="val" id="dropVal"></div>
+              </div>
+            </div>
+          </div>
+          <div class="pivot-actions">
+            <button class="btn btn-primary btn-sm" id="btnApplyPivot">▶ 应用到图表</button>
+            <button class="btn btn-ghost btn-sm" id="btnSavePivotForAI">💾 保存并用于 AI 分析</button>
+            <button class="btn btn-ghost btn-sm" id="btnResetPivot">↺ 重置</button>
+          </div>
+          <div class="pivot-result" id="pivotResult"></div>
+        </div>
+
+        <!-- 图表区 -->
+        <div class="chart-wrap">
+          <canvas id="myChart"></canvas>
+        </div>
+      </div>
+
+    </div><!-- /content-layout -->
+
+    <!-- AI 智能分析（全宽） -->
+    <div class="panel panel-ai">
+      <div class="panel-header">
+        <div class="ai-tabs">
+          <button class="ai-tab active" data-tab="raw">📄 原始数据分析</button>
+          <button class="ai-tab" data-tab="pivot">🔢 透视表分析</button>
+        </div>
+        <div class="ai-header-right">
+          <span class="pivot-saved-badge hidden" id="pivotSavedBadge">✅ 已保存透视配置</span>
+          <button class="btn btn-primary btn-sm" id="btnAnalyze">✨ AI 智能分析</button>
+        </div>
+      </div>
+      <div class="ai-body" id="aiBody">
+        <div class="ai-empty">
+          <div class="ai-empty-icon">🧠</div>
+          <p>点击「AI 智能分析」，AI 将自动识别数据主题，给出具体结论与行动建议。</p>
+          <p class="ai-empty-tip">需先在右上角完成 AI 接口配置</p>
+        </div>
+      </div>
+    </div>
+
+  </section>
+</main>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
